@@ -221,6 +221,10 @@ textarea.inp{resize:none;min-height:46px;line-height:1.5;overflow:hidden}
 .login h1 b{font-weight:800}.login h1 span{font-weight:200}
 .login p{margin:0;color:var(--muted);max-width:34ch}
 .login .btn{padding:14px 22px;font-size:15px}
+.lform{width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;text-align:left}
+.lform .btn{width:100%;margin-top:4px}
+.lform .more{align-self:center}
+.lform .lerr{text-align:center;margin:0}
 .lerr{color:#ff8691!important;font-size:14px}
 /* radar */
 .radar{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
@@ -329,7 +333,7 @@ textarea.inp{resize:none;min-height:46px;line-height:1.5;overflow:hidden}
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getAuth,signInWithEmailAndPassword,sendPasswordResetEmail,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,collection,setDoc,deleteDoc,onSnapshot} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 var FIREBASE_CONFIG={"apiKey":"AIzaSyB61MkruV-ouY91d9FqZwtkcGz0fvv6pYE","authDomain":"roteiros-arthurluiz.firebaseapp.com","projectId":"roteiros-arthurluiz","storageBucket":"roteiros-arthurluiz.firebasestorage.app","messagingSenderId":"920756427795","appId":"1:920756427795:web:cde29c5c40f08bee7eb3e6"};
 (function(){
@@ -965,8 +969,21 @@ function startLocal(){
 }
 function showLogin(msg){
   S.ready=false;$("#fab").hidden=true;closeAgent();$("#gear").hidden=true;setSync("busy","Desconectado");
-  app.innerHTML='<section class="login fade"><div class="logo"></div><h1><b>arthurluiz</b><span>roteiros</span></h1><p>Seu painel de marcas, roteiros e estratégia. Entre com a sua conta Google para continuar.</p><button class="btn" type="button" id="gbtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3z"/><path fill="#fff" opacity=".85" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z"/><path fill="#fff" opacity=".7" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2z"/><path fill="#fff" opacity=".55" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.3 3-4.1 5.6-4.1z"/></svg>Entrar com Google</button>'+(msg?'<p class="lerr">'+esc(msg)+'</p>':'')+'</section>';
-  $("#gbtn").onclick=function(){if(window.__login)window.__login()};
+  app.innerHTML='<section class="login fade"><div class="logo"></div><h1><b>arthurluiz</b><span>roteiros</span></h1><p>Seu painel de marcas e roteiros. Entre com o seu e-mail e senha.</p>'+
+  '<form id="lf" class="lform"><div class="field"><label for="l-email">E-mail</label><input class="inp" id="l-email" type="email" autocomplete="username" required></div>'+
+  '<div class="field"><label for="l-pw">Senha</label><input class="inp" id="l-pw" type="password" autocomplete="current-password" required></div>'+
+  '<button class="btn" type="submit" id="lbtn">Entrar</button><button class="more" type="button" id="lforgot">Esqueci a senha</button>'+
+  '<p class="lerr" id="lerr"'+(msg?'':' hidden')+'>'+esc(msg||"")+'</p></form></section>';
+  var err=function(t){var e=$("#lerr");e.textContent=t;e.hidden=!t};
+  $("#lf").onsubmit=async function(e){
+    e.preventDefault();var btn=$("#lbtn");btn.disabled=true;btn.textContent="Entrando…";err("");
+    try{await window.__login($("#l-email").value.trim(),$("#l-pw").value)}
+    catch(x){var c=x&&x.code||"";err(c==="auth/invalid-credential"||c==="auth/wrong-password"||c==="auth/user-not-found"||c==="auth/invalid-email"?"E-mail ou senha incorretos.":c==="auth/too-many-requests"?"Muitas tentativas. Espere alguns minutos e tente de novo.":c==="auth/network-request-failed"?"Sem internet. Confira a conexão.":c==="auth/operation-not-allowed"?"O login por e-mail e senha não está ativado no Firebase.":"Não foi possível entrar. Tente de novo.");btn.disabled=false;btn.textContent="Entrar"}
+  };
+  $("#lforgot").onclick=async function(){
+    var em=$("#l-email").value.trim();if(!em){err("Digite seu e-mail acima e toque em Esqueci a senha.");$("#l-email").focus();return}
+    try{await window.__reset(em);err("");toast("Se o e-mail estiver cadastrado, você vai receber um link para criar uma nova senha.")}catch(x){err("Não foi possível enviar o e-mail. Confira o endereço.")}
+  };
 }
 function radarFromStore(d){if(d&&Array.isArray(d.items)&&d.items.length&&(d.updated||"")>=(RADAR.updated||"")){RADAR=d;if(view.name==="home"&&$("#radarSec")){$("#radarSec").outerHTML=radarSection();bindRadar()}}}
 
@@ -978,18 +995,9 @@ async function boot(){
   var auth=getAuth(fbApp);
   var fdb;
   try{fdb=initializeFirestore(fbApp,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})})}catch(e){fdb=getFirestore(fbApp)}
-  var provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:"select_account"});
-  window.__login=async function(){
-    try{await signInWithPopup(auth,provider)}
-    catch(e){
-      if(e&&(e.code==="auth/popup-blocked"||e.code==="auth/operation-not-supported-in-this-environment"||e.code==="auth/cancelled-popup-request")){try{await signInWithRedirect(auth,provider)}catch(e2){showLogin("Não foi possível abrir o login. Tente de novo.")}}
-      else if(e&&e.code==="auth/popup-closed-by-user"){}
-      else if(e&&e.code==="auth/unauthorized-domain")showLogin("Este endereço ainda não foi autorizado no Firebase (Authentication → Configurações → Domínios autorizados).");
-      else showLogin("Não foi possível entrar. Tente de novo.");
-    }
-  };
+  window.__login=function(em,pw){return signInWithEmailAndPassword(auth,em,pw)};
+  window.__reset=function(em){return sendPasswordResetEmail(auth,em)};
   doSignOut=function(){var ks=[];try{localStorage.removeItem(LS)}catch(e){}signOut(auth)};
-  getRedirectResult(auth).catch(function(){});
   var unsubs=[];
   onAuthStateChanged(auth,function(user){
     unsubs.forEach(function(u){u()});unsubs=[];
