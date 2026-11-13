@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#050608">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://www.gstatic.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src https://roteiros-arthurluiz.firebaseapp.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>if(window.top!==window.self){try{window.top.location=window.self.location}catch(e){document.documentElement.style.display="none"}}</script>
 <meta name="description" content="Painel de marcas e roteiros da Arthur Luiz Digital.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -334,7 +337,7 @@ textarea.inp{resize:none;min-height:46px;line-height:1.5;overflow:hidden}
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,signInWithEmailAndPassword,sendPasswordResetEmail,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,collection,setDoc,deleteDoc,onSnapshot} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,collection,setDoc,deleteDoc,onSnapshot,terminate,clearIndexedDbPersistence} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 var FIREBASE_CONFIG={"apiKey":"AIzaSyB61MkruV-ouY91d9FqZwtkcGz0fvv6pYE","authDomain":"roteiros-arthurluiz.firebaseapp.com","projectId":"roteiros-arthurluiz","storageBucket":"roteiros-arthurluiz.firebasestorage.app","messagingSenderId":"920756427795","appId":"1:920756427795:web:cde29c5c40f08bee7eb3e6"};
 (function(){
 "use strict";
@@ -363,6 +366,15 @@ function isLight(c){return c==="#e8ecf5"}
 function mmss(s){s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
 function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 function fmtDate(v){if(!v)return "";var p=v.split("-");return p[2]+"/"+p[1]}
+function str(v,max){return typeof v==="string"?v.slice(0,max||20000):""}
+function safeColor(c){return COLORS.indexOf(c)>-1?c:COLORS[0]}
+function safeUrl(u){u=String(u||"");return /^https:\/\/[^\s"'<>]+$/i.test(u)?u:""}
+function cleanBrand(b){b=b&&typeof b==="object"?b:{};return {name:str(b.name,60)||"Sem nome",niche:str(b.niche,50),ig:str(b.ig,40),voice:str(b.voice,4000),color:safeColor(b.color),createdAt:+b.createdAt||0,updatedAt:+b.updatedAt||0}}
+function cleanScript(x){x=x&&typeof x==="object"?x:{};var st=Math.round(+x.status);
+  return {brandId:str(x.brandId,80),title:str(x.title,200),format:FORMATS.indexOf(x.format)>-1?x.format:"Outro",status:st>=0&&st<STATUS.length?st:0,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:"",goal:str(x.goal,200),hook:str(x.hook),
+  scenes:(Array.isArray(x.scenes)?x.scenes:[]).slice(0,60).map(function(c){c=c&&typeof c==="object"?c:{};return {say:str(c.say),see:str(c.see),dur:Math.max(0,Math.min(600,Math.round(+c.dur)||0))}}),cta:str(x.cta),caption:str(x.caption),notes:str(x.notes),createdAt:+x.createdAt||0,updatedAt:+x.updatedAt||0}}
+function cleanAll(o,fn){var m={};Object.keys(o||{}).forEach(function(k){if(/^[A-Za-z0-9_-]{1,80}$/.test(k))m[k]=fn(o[k])});return m}
+function cleanRadar(d){if(!d||!Array.isArray(d.items))return null;return {updated:/^\d{4}-\d{2}-\d{2}$/.test(d.updated)?d.updated:"",items:d.items.slice(0,12).map(function(x){x=x||{};return {t:str(x.t,120),f:str(x.f,80),how:str(x.how,800),audio:str(x.audio,120)}}),notes:str(d.notes,1500),sources:(Array.isArray(d.sources)?d.sources:[]).slice(0,8).map(function(z){z=z||{};return {n:str(z.n,200),u:safeUrl(z.u)}}).filter(function(z){return z.u})}}
 function words(t){t=String(t||"").trim();return t?t.split(/\s+/).length:0}
 
 /* ---------- estado e armazenamento ---------- */
@@ -457,8 +469,8 @@ function renderHome(){
   h+='<section><div class="row between" style="margin-bottom:6px"><div class="search">'+IC.search+'<input id="q" type="search" placeholder="Buscar marca" value="'+esc(view.q)+'" aria-label="Buscar marca"></div><button class="btn" type="button" data-act="newBrand">'+IC.plus+'Nova marca</button></div><div class="folders" id="folders"></div></section>';
   if(next.length){
     h+='<section class="fade"><p class="eyebrow" style="margin-bottom:12px">Próximas publicações</p><div class="list">'+next.map(function(s){
-      var b=S.brands[s.brandId],d=s.date.split("-");
-      return '<button class="item" type="button" data-open="'+s.id+'" style="--c:'+b.color+'"><span class="date">'+d[2]+'<i>'+MONTHS[+d[1]-1]+'</i></span><span class="dot"></span><span class="t"><strong>'+esc(s.title||"Sem título")+'</strong><small>'+esc(b.name)+' · '+esc(s.format)+'</small></span><span class="chip st-'+s.status+'">'+STATUS[s.status]+'</span></button>';
+      var b=S.brands[s.brandId],d=s.date.split("-");if(d.length!==3)d=["","1",""];
+      return '<button class="item" type="button" data-open="'+esc(s.id)+'" style="--c:'+safeColor(b.color)+'"><span class="date">'+esc(d[2])+'<i>'+(MONTHS[+d[1]-1]||"")+'</i></span><span class="dot"></span><span class="t"><strong>'+esc(s.title||"Sem título")+'</strong><small>'+esc(b.name)+' · '+esc(s.format)+'</small></span><span class="chip st-'+(+s.status||0)+'">'+esc(STATUS[s.status]||"")+'</span></button>';
     }).join("")+'</div></section>';
   }
   h+=radarSection();
@@ -471,7 +483,7 @@ function renderFolders(){
   var bl=brandList().filter(function(b){return !q||(b.name+" "+(b.niche||"")).toLowerCase().indexOf(q)>-1});
   box.innerHTML=bl.map(function(b){
     var sc=scriptsOf(b.id),open=sc.filter(function(s){return s.status<5}).length;
-    return '<button class="folder fade" type="button" data-brand="'+b.id+'" style="--c:'+b.color+'"><span class="ini'+(isLight(b.color)?" light":"")+'">'+esc(initials(b.name))+'</span><span><h3>'+esc(b.name)+'</h3><small>'+esc(b.niche||(b.ig?"@"+b.ig.replace(/^@/,""):"Sem segmento"))+'</small></span><span class="meta"><span><b>'+sc.length+'</b> '+(sc.length===1?"roteiro":"roteiros")+'</span><span>'+open+' em aberto</span></span></button>';
+    return '<button class="folder fade" type="button" data-brand="'+esc(b.id)+'" style="--c:'+safeColor(b.color)+'"><span class="ini'+(isLight(b.color)?" light":"")+'">'+esc(initials(b.name))+'</span><span><h3>'+esc(b.name)+'</h3><small>'+esc(b.niche||(b.ig?"@"+b.ig.replace(/^@/,""):"Sem segmento"))+'</small></span><span class="meta"><span><b>'+sc.length+'</b> '+(sc.length===1?"roteiro":"roteiros")+'</span><span>'+open+' em aberto</span></span></button>';
   }).join("")+(q?"":'<button class="folder add" type="button" data-act="newBrand"><span class="plus">'+IC.plus+'</span>Nova pasta</button>');
   if(!bl.length&&q)box.innerHTML='<p style="color:var(--muted);margin:0">Nenhuma marca com “'+esc(view.q)+'”.</p>';
   bind(box);
@@ -483,8 +495,8 @@ function renderBrand(){
   var counts=STATUS.map(function(_,i){return sc.filter(function(s){return s.status===i}).length});
   var shown=view.filter<0?sc:sc.filter(function(s){return s.status===view.filter});
   var h='<button class="back" type="button" data-act="home">'+IC.back+'Todas as marcas</button>'+
-  '<section class="bhead fade" style="--c:'+b.color+'"><span class="ini'+(isLight(b.color)?" light":"")+'">'+esc(initials(b.name))+'</span><div class="t"><h1>'+esc(b.name)+'</h1><small>'+esc([b.niche,b.ig?"@"+b.ig.replace(/^@/,""):""].filter(Boolean).join(" · ")||"Pasta da marca")+'</small></div><button class="iconbtn" type="button" data-act="editBrand" aria-label="Editar marca">'+IC.edit+'</button></section>';
-  if(b.voice)h+='<div class="voice fade" style="--c:'+b.color+'"><b>Tom de voz e referências</b>'+esc(b.voice)+'</div>';
+  '<section class="bhead fade" style="--c:'+safeColor(b.color)+'"><span class="ini'+(isLight(b.color)?" light":"")+'">'+esc(initials(b.name))+'</span><div class="t"><h1>'+esc(b.name)+'</h1><small>'+esc([b.niche,b.ig?"@"+b.ig.replace(/^@/,""):""].filter(Boolean).join(" · ")||"Pasta da marca")+'</small></div><button class="iconbtn" type="button" data-act="editBrand" aria-label="Editar marca">'+IC.edit+'</button></section>';
+  if(b.voice)h+='<div class="voice fade" style="--c:'+safeColor(b.color)+'"><b>Tom de voz e referências</b>'+esc(b.voice)+'</div>';
   h+='<section><div class="row between" style="margin-bottom:12px"><p class="eyebrow">Roteiros</p><button class="btn" type="button" data-act="newScript">'+IC.plus+'Novo roteiro</button></div>';
   if(!sc.length){
     h+='<div class="empty"><h3>Nenhum roteiro ainda</h3><p>Comece pelo gancho e pelas cenas. Tudo é salvo enquanto você escreve.</p><button class="btn" type="button" data-act="newScript">'+IC.plus+'Escrever o primeiro roteiro</button></div></section>';
@@ -492,7 +504,7 @@ function renderBrand(){
     h+='<div class="filters" role="group" aria-label="Filtrar por etapa"><button class="fbtn" type="button" data-f="-1" aria-pressed="'+(view.filter<0)+'">Todos<b>'+sc.length+'</b></button>'+STATUS.map(function(s,i){return counts[i]?'<button class="fbtn" type="button" data-f="'+i+'" aria-pressed="'+(view.filter===i)+'">'+s+'<b>'+counts[i]+'</b></button>':""}).join("")+'</div>';
     h+='<div class="list" style="margin-top:10px">'+(shown.map(function(s){
       var dur=(s.scenes||[]).reduce(function(a,c){return a+(+c.dur||0)},0);
-      return '<button class="item" type="button" data-open="'+s.id+'" style="--c:'+b.color+'"><span class="t"><strong>'+esc(s.title||"Sem título")+'</strong><small>'+esc([s.format,s.date?"publica "+fmtDate(s.date):"",dur?mmss(dur):""].filter(Boolean).join(" · "))+'</small></span><span class="chip st-'+s.status+'">'+STATUS[s.status]+'</span></button>';
+      return '<button class="item" type="button" data-open="'+esc(s.id)+'" style="--c:'+safeColor(b.color)+'"><span class="t"><strong>'+esc(s.title||"Sem título")+'</strong><small>'+esc([s.format,s.date?"publica "+fmtDate(s.date):"",dur?mmss(dur):""].filter(Boolean).join(" · "))+'</small></span><span class="chip st-'+(+s.status||0)+'">'+esc(STATUS[s.status]||"")+'</span></button>';
     }).join("")||'<p style="padding:14px;margin:0;color:var(--muted)">Nada nesta etapa.</p>')+'</div></section>';
   }
   app.innerHTML=h;bind();
@@ -524,7 +536,7 @@ function renderScript(){
   if(!draft||draft._id!==view.scriptId){draft=JSON.parse(JSON.stringify(S.scripts[view.scriptId]));draft._id=view.scriptId}
   var d=draft,b=S.brands[d.brandId]||{name:"",color:"#1a4dff"};
   var h='<button class="back" type="button" data-act="brand">'+IC.back+esc(b.name)+'</button>'+
-  '<article class="ed fade" style="--c:'+b.color+'">'+
+  '<article class="ed fade" style="--c:'+safeColor(b.color)+'">'+
   '<textarea class="titlein" id="f-title" data-f="title" rows="1" placeholder="Título do roteiro" aria-label="Título do roteiro">'+esc(d.title)+'</textarea>'+
   '<div class="metas">'+
     '<div class="field"><label for="f-format">Formato</label><select class="inp" id="f-format" data-f="format">'+FORMATS.map(function(f){return '<option'+(f===d.format?" selected":"")+'>'+f+'</option>'}).join("")+'</select></div>'+
@@ -963,7 +975,7 @@ $("#gear").onclick=settingsSheet;
 /* ---------- carregar dados ---------- */
 var loadTimer=null;
 function startLocal(){
-  try{var raw=localStorage.getItem(LS);if(raw){var o=JSON.parse(raw);S.brands=o.brands||{};S.scripts=o.scripts||{}}}catch(e){}
+  try{var raw=localStorage.getItem(LS);if(raw){var o=JSON.parse(raw);S.brands=cleanAll(o.brands,cleanBrand);S.scripts=cleanAll(o.scripts,cleanScript)}}catch(e){}
   S.ready=true;setSync("local","Salvo neste aparelho");render();
   app.insertAdjacentHTML("afterbegin",'<div class="note">Modo de teste: o Firebase ainda não foi configurado, então os roteiros ficam salvos só neste aparelho.</div>');
 }
@@ -985,7 +997,7 @@ function showLogin(msg){
     try{await window.__reset(em);err("");toast("Se o e-mail estiver cadastrado, você vai receber um link para criar uma nova senha.")}catch(x){err("Não foi possível enviar o e-mail. Confira o endereço.")}
   };
 }
-function radarFromStore(d){if(d&&Array.isArray(d.items)&&d.items.length&&(d.updated||"")>=(RADAR.updated||"")){RADAR=d;if(view.name==="home"&&$("#radarSec")){$("#radarSec").outerHTML=radarSection();bindRadar()}}}
+function radarFromStore(d){d=cleanRadar(d);if(d&&Array.isArray(d.items)&&d.items.length&&(d.updated||"")>=(RADAR.updated||"")){RADAR=d;if(view.name==="home"&&$("#radarSec")){$("#radarSec").outerHTML=radarSection();bindRadar()}}}
 
 AG.sample=null;
 async function boot(){
@@ -997,7 +1009,7 @@ async function boot(){
   try{fdb=initializeFirestore(fbApp,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})})}catch(e){fdb=getFirestore(fbApp)}
   window.__login=function(em,pw){return signInWithEmailAndPassword(auth,em,pw)};
   window.__reset=function(em){return sendPasswordResetEmail(auth,em)};
-  doSignOut=function(){var ks=[];try{localStorage.removeItem(LS)}catch(e){}signOut(auth)};
+  doSignOut=async function(){try{localStorage.removeItem(LS)}catch(e){}try{await signOut(auth)}catch(e){}try{await terminate(fdb);await clearIndexedDbPersistence(fdb)}catch(e){}try{var ks=await caches.keys();await Promise.all(ks.map(function(k){return caches.delete(k)}))}catch(e){}location.reload()};
   var unsubs=[];
   onAuthStateChanged(auth,function(user){
     unsubs.forEach(function(u){u()});unsubs=[];
@@ -1010,7 +1022,7 @@ async function boot(){
     saveRadar=function(d){setDoc(radarRef,d).catch(function(){})};
     var got={brands:false,scripts:false};
     function onSnap(col){return function(snap){
-      var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});
+      var m={};snap.docs.forEach(function(d){if(/^[A-Za-z0-9_-]{1,80}$/.test(d.id))m[d.id]=(col==="brands"?cleanBrand:cleanScript)(d.data())});
       if(col==="scripts"&&draft&&view.scriptId)m[view.scriptId]=S.scripts[view.scriptId];
       S[col]=m;got[col]=true;
       if(got.brands&&got.scripts){
